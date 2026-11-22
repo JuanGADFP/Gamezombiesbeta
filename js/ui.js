@@ -15,6 +15,10 @@ class UI {
     document.getElementById('btn-resume').onclick = () => game.togglePause();
     document.getElementById('btn-restart').onclick = () => game.startGame();
     document.getElementById('btn-pause-menu').onclick = () => this.toMenu();
+    const qb = document.getElementById('btn-quality');
+    const setQ = () => { qb.textContent = `Gráficos: ${game.renderer.low ? 'Baja (rendimiento)' : 'Alta'}`; };
+    qb.onclick = () => { game.toggleQuality(); setQ(); };
+    setQ();
     document.getElementById('btn-retry').onclick = () => game.startGame();
     document.getElementById('btn-gameover-menu').onclick = () => this.toMenu();
 

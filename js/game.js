@@ -1,12 +1,15 @@
 'use strict';
 
 class Game {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.renderer = new Renderer(this);
+  constructor(glCanvas, hudCanvas) {
+    this.canvas = hudCanvas;
+    this.ctx = hudCanvas.getContext('2d');
+    this.cam = { x: CONFIG.WORLD_W / 2, y: CONFIG.WORLD_H / 2, sx: 0, sy: 0, shake: 0 };
+    this.renderer = new Renderer(this, glCanvas);
     this.hud = new HUD(this);
     this.best = this.loadBest();
+    try { this.renderer.low = localStorage.getItem('zonamuerta_quality') === 'low'; } catch (e) { /* sin almacenamiento */ }
+    if (this.renderer.low) this.renderer.setQuality(true);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.newRun();
@@ -23,8 +26,8 @@ class Game {
     this.canvas.height = Math.floor(this.ch * this.dpr);
     this.canvas.style.width = this.cw + 'px';
     this.canvas.style.height = this.ch + 'px';
-    this.zoom = U.clamp(Math.min(this.cw / CONFIG.VIEW_W, this.ch / CONFIG.VIEW_H), 0.5, 1.6);
-    this.renderer.resize();
+    this.renderer.resize(this.cw, this.ch, this.dpr);
+    this.viewRadius = this.renderer.viewRadius;
   }
 
   newRun() {
@@ -43,9 +46,12 @@ class Game {
     this.deathT = 0;
     this.director = new Director(this);
     this.zombieHash = new SpatialHash(64);
-    this.cam = { x: this.player.x, y: this.player.y, sx: 0, sy: 0, shake: 0 };
+    this.cam.x = this.player.x;
+    this.cam.y = this.player.y;
+    this.cam.shake = 0;
     this.world.computeFlow(this.player.x, this.player.y);
     this.renderer.onNewWorld();
+    this.hud.buildMinimap();
   }
 
   startGame() {
@@ -79,20 +85,16 @@ class Game {
 
   // ------------------------------------------------------------ utilidades
   mouseWorld() {
-    return {
-      x: (Input.mouse.x - this.cw / 2) / this.zoom + this.cam.x,
-      y: (Input.mouse.y - this.ch / 2) / this.zoom + this.cam.y,
-    };
+    return this.renderer.screenToWorld(Input.mouse.x, Input.mouse.y);
   }
-  worldToScreen(x, y) {
-    return {
-      x: (x - this.cam.x + this.cam.sx) * this.zoom + this.cw / 2,
-      y: (y - this.cam.y + this.cam.sy) * this.zoom + this.ch / 2,
-    };
+  // h = altura sobre el suelo
+  worldToScreen(x, y, h = 0) {
+    return this.renderer.project(x, y, h);
   }
   isOnScreen(x, y, margin = 0) {
-    const s = this.worldToScreen(x, y);
-    return s.x > -margin && s.y > -margin && s.x < this.cw + margin && s.y < this.ch + margin;
+    const s = this.worldToScreen(x, y, 0), t = this.worldToScreen(x, y, 40);
+    const on = q => q.x > -margin && q.y > -margin && q.x < this.cw + margin && q.y < this.ch + margin;
+    return on(s) || on(t);
   }
   addShake(v) {
     this.cam.shake = Math.min(18, this.cam.shake + v);
@@ -110,7 +112,7 @@ class Game {
     const n = kind === 'scorch' ? 1 : U.randInt(2, 5);
     for (let i = 0; i < n; i++) blobs.push([U.rand(-r, r) * 0.7, U.rand(-r, r) * 0.7, r * U.rand(0.4, 1)]);
     if (kind === 'scorch') blobs[0] = [0, 0, r];
-    this.decals.push({ kind, x, y, r, blobs, life: kind === 'blood' ? 60 : 30 });
+    this.decals.push({ kind, x, y, r, blobs, rot: U.rand(0, TAU), life: kind === 'blood' ? 60 : 30 });
     if (this.decals.length > CONFIG.MAX_DECALS) this.decals.shift();
   }
 
@@ -120,7 +122,10 @@ class Game {
     const p = this.player;
     Sound.play('kill');
     this.particles.blood(z.x, z.y, 10, 0, 0);
-    this.decals.push({ kind: 'corpse', x: z.x, y: z.y, r: z.radius, angle: z.angle, shirt: z.type === 'brute' ? '#3a3328' : z.shirt, skin: z.T.skin, life: 25 });
+    this.decals.push({ kind: 'corpse', x: z.x, y: z.y, r: z.radius, angle: z.angle + Math.PI, type: z.type, shirt: z.shirt, pants: z.pants, skin: z.T.skin, life: 25 });
+    this.addDecal('blood', z.x, z.y, z.radius * 0.9);
+    const corpses = this.decals.filter(d => d.kind === 'corpse');
+    if (corpses.length > CONFIG.MAX_CORPSES) corpses[0].life = Math.min(corpses[0].life, 3);
     if (this.decals.length > CONFIG.MAX_DECALS) this.decals.shift();
     // experiencia en orbes
     let xp = z.T.xp;
@@ -182,9 +187,13 @@ class Game {
     Sound.play('explosion');
     this.addShake(14);
     this.addLight(x, y, radius * 3, 0.35);
-    this.particles.burst(x, y, 40, '#ffb347', radius * 2.5, 0.5, 6, true);
-    this.particles.burst(x, y, 30, '#7a8a3a', radius * 1.8, 0.8, 5);
-    this.particles.burst(x, y, 20, 'rgba(60,60,60,0.7)', radius, 1.2, 10);
+    this.particles.burst(x, y, 50, '#ffb347', radius * 2.2, 0.5, 18, true, 12, 140);
+    this.particles.burst(x, y, 30, '#ff6a1a', radius * 1.2, 0.35, 26, true, 18, 60);
+    this.particles.burst(x, y, 40, '#6a7a2a', radius * 2, 1.0, 4, false, 16, 260);
+    for (let i = 0; i < 18; i++) {
+      this.particles.add(x + U.rand(-30, 30), y + U.rand(-30, 30), U.rand(-30, 30), U.rand(-30, 30), U.rand(1.5, 2.5), U.rand(24, 36),
+        'rgba(50,48,44,0.6)', 0.8, false, U.rand(10, 40), U.rand(30, 70), 0, 2);
+    }
     this.addDecal('scorch', x, y, radius * 0.6);
     this.addDecal('acid', x, y, radius * 0.4);
     const p = this.player;
@@ -204,6 +213,7 @@ class Game {
     this.deathT = 1.6;
     Sound.play('death');
     this.particles.blood(this.player.x, this.player.y, 30, 0, 0);
+    this.addDecal('blood', this.player.x, this.player.y, 20);
     this.addShake(12);
   }
 
@@ -252,6 +262,13 @@ class Game {
     }
   }
 
+  toggleQuality() {
+    const low = !this.renderer.low;
+    this.renderer.setQuality(low);
+    try { localStorage.setItem('zonamuerta_quality', low ? 'low' : 'high'); } catch (e) { /* sin almacenamiento */ }
+    return low;
+  }
+
   togglePause() {
     if (this.state === 'playing') {
       this.state = 'paused';
@@ -273,9 +290,10 @@ class Game {
     if (this.state === 'menu') {
       // la cámara recorre el mapa de fondo
       this.time += dt;
-      this.cam.x = this.world.w / 2 + Math.cos(this.time * 0.05) * 600;
-      this.cam.y = this.world.h / 2 + Math.sin(this.time * 0.07) * 400;
+      this.cam.x = this.world.w / 2 + Math.cos(this.time * 0.04) * 700;
+      this.cam.y = this.world.h / 2 + Math.sin(this.time * 0.055) * 500;
       this.time = this.time % 1000;
+      this.renderer.updateCamera();
       return;
     }
     if (this.state !== 'playing') return;
@@ -330,14 +348,16 @@ class Game {
     this.cam.shake = Math.max(0, this.cam.shake - dt * 30);
     this.cam.sx = U.rand(-1, 1) * this.cam.shake;
     this.cam.sy = U.rand(-1, 1) * this.cam.shake;
+    this.renderer.updateCamera();
 
     if (p.alive && p.pendingLevels > 0) this.openLevelUp();
   }
 
   render() {
     const ctx = this.ctx;
+    this.renderer.render();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.renderer.render(ctx);
+    ctx.clearRect(0, 0, this.cw, this.ch);
     if (this.state !== 'menu') this.hud.render(ctx);
     this.canvas.style.cursor = this.state === 'playing' ? 'none' : 'default';
   }

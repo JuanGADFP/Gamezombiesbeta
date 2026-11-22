@@ -1,6 +1,7 @@
 'use strict';
 
-// Mapa: calles, edificios, coches, árboles y rocas + campo de flujo para la IA
+// Ciudad en ruinas: calles, edificios, ruinas, coches calcinados, barricadas...
+// + rejilla de colisión y campo de flujo para la IA de los zombis
 class World {
   constructor() {
     this.w = CONFIG.WORLD_W;
@@ -20,7 +21,14 @@ class World {
 
     this.obstacles = [];
     this.roads = [];
-    this.decor = [];
+    this.intersections = [];
+    this.areas = [];       // solares (para la textura del suelo)
+    this.decor = [];       // objetos sin colisión: farolas, basura, escombros...
+    this.fires = [];       // focos de fuego permanentes
+    this.lightSources = [];// farolas que parpadean, focos militares
+    this.scorches = [];
+    this.craters = [];
+    this.border = [];      // edificios de fondo fuera del mapa
     this.generate();
     this.buildGrid();
   }
@@ -28,135 +36,295 @@ class World {
   // ---------------------------------------------------------------- generación
   generate() {
     const cx = this.w / 2, cy = this.h / 2;
-    const B = CONFIG.BLOCK, RW = CONFIG.ROAD_W;
+    const B = CONFIG.BLOCK, RW = CONFIG.ROAD_W, SW = CONFIG.SIDEWALK;
     const lines = [];
     for (let k = -4; k <= 4; k++) {
       const p = cx + k * B;
-      if (p > 150 && p < this.w - 150) lines.push(p);
+      if (p > 300 && p < this.w - 300) lines.push(p);
     }
+    this.lines = lines;
     for (const p of lines) {
       this.roads.push({ x: 0, y: p - RW / 2, w: this.w, h: RW, dir: 'h' });
       this.roads.push({ x: p - RW / 2, y: 0, w: RW, h: this.h, dir: 'v' });
     }
-    const bounds = [0, ...lines, this.w];
-    const margin = 22;
+    for (const a of lines) for (const b of lines) this.intersections.push({ x: a, y: b });
 
+    this.checkpoint(cx, cy);
+
+    const bounds = [0, ...lines, this.w];
+    const inset = RW / 2 + SW + 10;
     for (let i = 0; i < bounds.length - 1; i++) {
       for (let j = 0; j < bounds.length - 1; j++) {
-        const x0 = bounds[i] + (i === 0 ? 40 : RW / 2 + margin);
-        const x1 = bounds[i + 1] - (i + 1 === bounds.length - 1 ? 40 : RW / 2 + margin);
-        const y0 = bounds[j] + (j === 0 ? 40 : RW / 2 + margin);
-        const y1 = bounds[j + 1] - (j + 1 === bounds.length - 1 ? 40 : RW / 2 + margin);
-        if (x1 - x0 < 80 || y1 - y0 < 80) continue;
-        const bcx = (x0 + x1) / 2, bcy = (y0 + y1) / 2;
-        const d = Math.hypot(bcx - cx, bcy - cy);
-        if (d < CONFIG.TOWN_RADIUS) {
-          if (Math.random() < 0.82) this.makeTownBlock(x0, y0, x1, y1);
-          else this.makePark(x0, y0, x1, y1);
+        const x0 = bounds[i] + (i === 0 ? 70 : inset);
+        const x1 = bounds[i + 1] - (i + 1 === bounds.length - 1 ? 70 : inset);
+        const y0 = bounds[j] + (j === 0 ? 70 : inset);
+        const y1 = bounds[j + 1] - (j + 1 === bounds.length - 1 ? 70 : inset);
+        if (x1 - x0 < 120 || y1 - y0 < 120) continue;
+        if (Math.random() < 0.12 && !this.nearCenter(x0, y0, x1 - x0, y1 - y0)) {
+          this.makeBuilding(x0 + 20, y0 + 20, x1 - x0 - 40, y1 - y0 - 40, true);
+          continue;
+        }
+        const mx = U.lerp(x0, x1, U.rand(0.4, 0.6)), my = U.lerp(y0, y1, U.rand(0.4, 0.6));
+        const lots = [[x0, y0, mx, my], [mx, y0, x1, my], [x0, my, mx, y1], [mx, my, x1, y1]];
+        for (const [a, b, c, d] of lots) this.makeLot(a, b, c, d);
+      }
+    }
+    this.streets();
+    this.makeBorder();
+  }
+
+  makeLot(x0, y0, x1, y1) {
+    if (this.nearCenter(x0, y0, x1 - x0, y1 - y0)) return this.makeCamp(x0, y0, x1, y1);
+    const r = Math.random();
+    const pad = 18;
+    if (r < 0.6) this.makeBuilding(x0 + pad, y0 + pad, x1 - x0 - pad * 2, y1 - y0 - pad * 2, false);
+    else if (r < 0.76) this.makeRuin(x0 + 10, y0 + 10, x1 - 10, y1 - 10);
+    else if (r < 0.88) this.makeParking(x0 + 8, y0 + 8, x1 - 8, y1 - 8);
+    else this.makePlaza(x0 + 8, y0 + 8, x1 - 8, y1 - 8);
+  }
+
+  makeBuilding(x, y, w, h, big) {
+    if (w < 70 || h < 70) return;
+    const floors = big ? U.randInt(3, 6) : U.choice([2, 2, 3, 3, 3, 4, 4, 5]);
+    const H = floors * CONFIG.FLOOR_H;
+    const style = big ? U.choice([0, 2, 2]) : U.randInt(0, 3);
+    const burnt = Math.random() < 0.22;
+    const props = [];
+    const nProps = U.randInt(0, big ? 5 : 3);
+    for (let i = 0; i < nProps; i++) {
+      props.push({ type: U.choice(['tank', 'ac', 'ac', 'shed', 'antenna']), x: U.rand(x + 20, x + w - 20), y: U.rand(y + 20, y + h - 20), rot: U.rand(0, TAU) });
+    }
+    this.obstacles.push({ kind: 'building', shape: 'rect', x, y, w, h, floors, height: H, style, burnt, shop: Math.random() < 0.6, props });
+    this.areas.push({ type: 'building', x, y, w, h });
+    if (burnt) {
+      if (Math.random() < 0.35) this.fires.push({ x: U.rand(x + 20, x + w - 20), y: U.rand(y + 20, y + h - 20), z: H, s: U.rand(1.2, 2) });
+      this.scorches.push({ x: x + w / 2, y: y + h / 2, r: Math.max(w, h) * 0.8, a: 0.5 });
+    }
+    if (Math.random() < 0.25) {
+      const side = U.randInt(0, 3);
+      const px = side < 2 ? U.rand(x, x + w) : (side === 2 ? x - 14 : x + w + 14);
+      const py = side < 2 ? (side === 0 ? y - 14 : y + h + 14) : U.rand(y, y + h);
+      this.addRubble(px, py, U.rand(16, 26));
+    }
+  }
+
+  makeRuin(x0, y0, x1, y1) {
+    this.areas.push({ type: 'ruin', x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    const style = U.choice([0, 1, 1, 3]);
+    const T = 12;
+    const sides = [
+      [x0, y0, x1, y0, 'h'], [x0, y1 - T, x1, y1 - T, 'h'],
+      [x0, y0, x0, y1, 'v'], [x1 - T, y0, x1 - T, y1, 'v'],
+    ];
+    for (const [ax, ay, bx, by, dir] of sides) {
+      const len = dir === 'h' ? bx - ax : by - ay;
+      let s = 0;
+      while (s < len) {
+        const seg = Math.min(len - s, U.rand(30, 80));
+        if (Math.random() > 0.3) {
+          const height = Math.random() < 0.2 ? U.rand(70, 120) : U.rand(14, 60);
+          if (dir === 'h') this.obstacles.push({ kind: 'wall', shape: 'rect', x: ax + s, y: ay, w: seg, h: T, height, style });
+          else this.obstacles.push({ kind: 'wall', shape: 'rect', x: ax, y: ay + s, w: T, h: seg, height, style });
         } else {
-          this.makeForest(x0, y0, x1, y1, d);
+          s += U.rand(10, 30);
+        }
+        s += seg + U.rand(0, 6);
+      }
+    }
+    const n = U.randInt(2, 4);
+    for (let i = 0; i < n; i++) {
+      this.addRubble(U.rand(x0 + 50, x1 - 50), U.rand(y0 + 50, y1 - 50), U.rand(22, 42));
+    }
+    for (let i = 0; i < 30; i++) this.decor.push({ type: 'debris', x: U.rand(x0, x1), y: U.rand(y0, y1), rot: U.rand(0, TAU), s: U.rand(0.6, 1.8) });
+    if (Math.random() < 0.3) {
+      const fx = U.rand(x0 + 60, x1 - 60), fy = U.rand(y0 + 60, y1 - 60);
+      if (!this.overlapsAny(fx - 20, fy - 20, 40, 40)) this.fires.push({ x: fx, y: fy, z: 0, s: 1.2 });
+    }
+  }
+
+  makeParking(x0, y0, x1, y1) {
+    this.areas.push({ type: 'parking', x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    for (const top of [true, false]) {
+      for (let px = x0 + 14; px < x1 - 50; px += 56) {
+        if (Math.random() < 0.45) continue;
+        const y = top ? y0 + 10 : y1 - 96;
+        this.addCar(px + 6 + U.rand(-3, 3), y + U.rand(-3, 3), true, Math.random() < 0.7, 0.15);
+      }
+    }
+    for (let i = 0; i < 12; i++) this.decor.push({ type: U.choice(['trash', 'tire', 'debris']), x: U.rand(x0, x1), y: U.rand(y0, y1), rot: U.rand(0, TAU), s: U.rand(0.7, 1.3) });
+  }
+
+  makePlaza(x0, y0, x1, y1) {
+    this.areas.push({ type: 'plaza', x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    const n = U.randInt(3, 6);
+    for (let i = 0, t = 0; i < n && t < 40; t++) {
+      const x = U.rand(x0 + 30, x1 - 30), y = U.rand(y0 + 30, y1 - 30);
+      if (this.overlapsAny(x - 40, y - 40, 80, 80)) continue;
+      this.obstacles.push({ kind: 'tree', shape: 'circle', x, y, r: 9, s: U.rand(0.8, 1.3), rot: U.rand(0, TAU) });
+      i++;
+    }
+    if (Math.random() < 0.5) {
+      const x = (x0 + x1) / 2, y = (y0 + y1) / 2;
+      if (!this.overlapsAny(x - 40, y - 40, 80, 80)) this.obstacles.push({ kind: 'statue', shape: 'circle', x, y, r: 26 });
+    }
+    for (let i = 0; i < U.randInt(0, 3); i++) {
+      const x = U.rand(x0 + 40, x1 - 80), y = U.rand(y0 + 40, y1 - 70);
+      if (!this.overlapsAny(x - 10, y - 10, 70, 60)) this.obstacles.push({ kind: 'tent', shape: 'rect', x, y, w: 50, h: 40, height: 26, color: U.choice(['#3d5a3a', '#6a4a2a', '#2a4a6a', '#7a2a2a']) });
+    }
+    for (let i = 0; i < 4; i++) this.decor.push({ type: 'bench', x: U.rand(x0 + 20, x1 - 20), y: U.rand(y0 + 20, y1 - 20), rot: U.choice([0, Math.PI / 2]), s: 1 });
+    for (let i = 0; i < 10; i++) this.decor.push({ type: U.choice(['trash', 'paper', 'debris']), x: U.rand(x0, x1), y: U.rand(y0, y1), rot: U.rand(0, TAU), s: U.rand(0.7, 1.3) });
+    if (Math.random() < 0.4) this.addBarrel(U.rand(x0 + 30, x1 - 30), U.rand(y0 + 30, y1 - 30), true);
+  }
+
+  // zona militar abandonada junto al punto de inicio
+  makeCamp(x0, y0, x1, y1) {
+    this.areas.push({ type: 'building', x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    const cx = this.w / 2, cy = this.h / 2;
+    const fx = Math.abs(x0 - cx) < Math.abs(x1 - cx) ? x1 : x0;
+    const fy = Math.abs(y0 - cy) < Math.abs(y1 - cy) ? y1 : y0;
+    const tx = U.lerp(x0, x1, 0.5) + (fx === x0 ? -40 : 40) - 40, ty = U.lerp(y0, y1, 0.5) + (fy === y0 ? -40 : 40) - 30;
+    this.obstacles.push({ kind: 'tent', shape: 'rect', x: tx, y: ty, w: 90, h: 64, height: 38, color: '#4a5236' });
+    const lx = fx === x0 ? x0 + 30 : x1 - 30, ly = fy === y0 ? y0 + 30 : y1 - 30;
+    this.decor.push({ type: 'flood', x: lx, y: ly, rot: Math.atan2(cy - ly, cx - lx), s: 1 });
+    this.lightSources.push({ x: U.lerp(lx, cx, 0.25), y: U.lerp(ly, cy, 0.25), z: 60, r: 380, color: 0xdde6ff, intensity: 2.2, flicker: Math.random() < 0.5 });
+    for (let i = 0; i < 6; i++) this.decor.push({ type: 'crate', x: U.rand(x0 + 20, x1 - 20), y: U.rand(y0 + 20, y1 - 20), rot: U.rand(0, TAU), s: U.rand(0.8, 1.2) });
+  }
+
+  checkpoint(cx, cy) {
+    const RW = CONFIG.ROAD_W, SW = CONFIG.SIDEWALK, D = 250, half = RW / 2 + SW, gap = 34;
+    // muros de sacos terreros cortando cada calle con un paso en el centro
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const px = cx + dx * D, py = cy + dy * D;
+      if (dx) {
+        this.obstacles.push({ kind: 'sandbag', shape: 'rect', x: px - 9, y: py - half, w: 18, h: half - gap, height: 20 });
+        this.obstacles.push({ kind: 'sandbag', shape: 'rect', x: px - 9, y: py + gap, w: 18, h: half - gap, height: 20 });
+      } else {
+        this.obstacles.push({ kind: 'sandbag', shape: 'rect', x: px - half, y: py - 9, w: half - gap, h: 18, height: 20 });
+        this.obstacles.push({ kind: 'sandbag', shape: 'rect', x: px + gap, y: py - 9, w: half - gap, h: 18, height: 20 });
+      }
+    }
+    this.addCar(cx + 110, cy - RW * 0.22 - 25, false, Math.random() < 0.4, 0.05, 'military');
+    this.addCar(cx - RW * 0.22 - 25, cy + 90, true, true, 0.05, 'military');
+    this.addBarrel(cx - 120, cy - 70, true);
+    this.addBarrel(cx + 70, cy + 120, true);
+    for (let i = 0; i < 4; i++) {
+      const a = U.rand(0, TAU);
+      this.decor.push({ type: 'crate', x: cx + Math.cos(a) * U.rand(120, 200), y: cy + Math.sin(a) * U.rand(120, 200), rot: U.rand(0, TAU), s: 1 });
+    }
+  }
+
+  streets() {
+    const RW = CONFIG.ROAD_W, SW = CONFIG.SIDEWALK, cx = this.w / 2, cy = this.h / 2;
+    const stops = [0, ...this.lines, this.w];
+    for (const p of this.lines) {
+      for (const dir of ['h', 'v']) {
+        for (let i = 0; i < stops.length - 1; i++) {
+          const a = stops[i] + (i === 0 ? 0 : RW / 2 + 20), b = stops[i + 1] - (i + 1 === stops.length - 1 ? 0 : RW / 2 + 20);
+          const len = b - a;
+          const P = (along, off) => (dir === 'h' ? { x: along, y: p + off } : { x: p + off, y: along });
+          // coches
+          const nCars = U.choice([0, 1, 1, 2, 2, 3]);
+          for (let c = 0; c < nCars; c++) {
+            const along = U.rand(a + 40, b - 140), lane = U.choice([-1, 1]) * RW * 0.22;
+            const pt = P(along, lane);
+            const v = Math.random() < 0.05 ? 'bus' : U.choice(['car', 'car', 'car', 'taxi', 'van', 'police', 'car']);
+            this.addCar(pt.x, pt.y, dir === 'v', Math.random() < 0.6, 0.25, v, true);
+          }
+          // barricada de hormigón cruzando la calle
+          if (Math.random() < 0.12) {
+            const along = U.rand(a + 60, b - 60), gapAt = U.rand(-RW / 2 + 30, RW / 2 - 30);
+            for (let off = -RW / 2 - SW + 26; off < RW / 2 + SW - 20; off += 56) {
+              if (Math.abs(off - gapAt) < 40) continue;
+              const pt = P(along, off);
+              const w = dir === 'h' ? 16 : 52, h = dir === 'h' ? 52 : 16;
+              if (!this.overlapsAny(pt.x - w / 2, pt.y - h / 2, w, h)) this.obstacles.push({ kind: 'barrier', shape: 'rect', x: pt.x - w / 2, y: pt.y - h / 2, w, h, height: 22, rot: U.rand(-0.15, 0.15) });
+            }
+          }
+          if (Math.random() < 0.14) { const pt = P(U.rand(a, b), U.rand(-RW / 2, RW / 2)); this.addRubble(pt.x, pt.y, U.rand(16, 30)); }
+          if (Math.random() < 0.08) { const pt = P(U.rand(a, b), U.rand(-RW / 3, RW / 3)); if (!this.nearCenter(pt.x - 40, pt.y - 40, 80, 80)) this.craters.push({ x: pt.x, y: pt.y, r: U.rand(16, 30) }); }
+          // aceras: farolas, contenedores, bidones, basura
+          for (const side of [-1, 1]) {
+            const off = side * (RW / 2 + 6);
+            for (let s = a + U.rand(30, 90); s < b - 20; s += 180) {
+              const pt = P(s, off), r = Math.random();
+              const lamp = { type: 'lamp', x: pt.x, y: pt.y, rot: dir === 'h' ? (side < 0 ? Math.PI / 2 : -Math.PI / 2) : (side < 0 ? 0 : Math.PI), s: 1, broken: r < 0.12 ? U.rand(0.15, 0.4) * U.choice([-1, 1]) : 0, lit: r > 0.92 };
+              this.decor.push(lamp);
+              if (lamp.lit) {
+                const ax = Math.cos(lamp.rot) * 22, ay = Math.sin(lamp.rot) * 22;
+                this.lightSources.push({ x: pt.x + ax, y: pt.y + ay, z: 70, r: 260, color: 0xffc27a, intensity: 1.6, flicker: true });
+              }
+            }
+            const sideOff = side * (RW / 2 + SW / 2);
+            if (Math.random() < 0.12) {
+              const pt = P(U.rand(a + 30, b - 60), sideOff);
+              const w = dir === 'h' ? 52 : 28, h = dir === 'h' ? 28 : 52;
+              if (!this.overlapsAny(pt.x - w / 2, pt.y - h / 2, w, h)) this.obstacles.push({ kind: 'dumpster', shape: 'rect', x: pt.x - w / 2, y: pt.y - h / 2, w, h, height: 24, color: U.choice(['#2f4a2f', '#3a3f4a', '#4a3a2a']), rot: dir === 'h' ? 0 : Math.PI / 2 });
+            }
+            if (Math.random() < 0.06) { const pt = P(U.rand(a + 20, b - 20), sideOff); this.addBarrel(pt.x, pt.y, Math.random() < 0.7); }
+            for (let t = 0; t < 7; t++) {
+              const pt = P(U.rand(a, b), side * U.rand(RW / 2 - 10, RW / 2 + SW));
+              this.decor.push({ type: U.choice(['trash', 'trash', 'paper', 'debris', 'tire', 'paper']), x: pt.x, y: pt.y, rot: U.rand(0, TAU), s: U.rand(0.6, 1.3) });
+            }
+          }
+          for (let t = 0; t < 5; t++) {
+            const pt = P(U.rand(a, b), U.rand(-RW / 2, RW / 2));
+            this.decor.push({ type: U.choice(['paper', 'debris', 'cone']), x: pt.x, y: pt.y, rot: U.rand(0, TAU), s: U.rand(0.6, 1.2) });
+          }
         }
       }
     }
-
-    // coches abandonados en las calles
-    for (const r of this.roads) {
-      const len = r.dir === 'h' ? r.w : r.h;
-      for (let s = 0; s < len; s += 120) {
-        if (Math.random() > 0.08) continue;
-        const along = s + U.rand(0, 60);
-        let x, y, w, h;
-        const lane = U.choice([-1, 1]) * RW * 0.22;
-        if (r.dir === 'h') {
-          w = 86; h = 42; x = along; y = r.y + r.h / 2 + lane - h / 2;
-        } else {
-          w = 42; h = 86; y = along; x = r.x + r.w / 2 + lane - w / 2;
-        }
-        if (Math.hypot(x + w / 2 - cx, y + h / 2 - cy) < 260) continue;
-        if (this.overlapsAny(x - 20, y - 20, w + 40, h + 40)) continue;
-        this.obstacles.push({
-          kind: 'car', shape: 'rect', x, y, w, h, vertical: r.dir === 'v',
-          color: U.choice(['#8c2f2f', '#2f4f8c', '#c9c9c9', '#3a3a3a', '#6b8c3a', '#c99a2f', '#5e3a8c']),
-          burnt: Math.random() < 0.3,
-        });
-      }
-    }
-
-    // decoración sin colisión
-    for (let i = 0; i < 2600; i++) {
-      const x = U.rand(0, this.w), y = U.rand(0, this.h);
-      if (this.onRoad(x, y)) continue;
-      this.decor.push({ x, y, t: U.randInt(0, 3), s: U.rand(0.7, 1.3), c: U.randInt(0, 3) });
-    }
   }
 
-  makeTownBlock(x0, y0, x1, y1) {
-    const midX = (x0 + x1) / 2, midY = (y0 + y1) / 2;
-    const lots = [[x0, y0, midX, midY], [midX, y0, x1, midY], [x0, midY, midX, y1], [midX, midY, x1, y1]];
-    const pad = 26;
-    for (const [lx0, ly0, lx1, ly1] of lots) {
-      if (Math.random() < 0.2) {
-        if (Math.random() < 0.5) this.scatterTrees(lx0, ly0, lx1, ly1, 2);
-        continue;
-      }
-      const maxW = lx1 - lx0 - pad * 2, maxH = ly1 - ly0 - pad * 2;
-      const w = U.rand(Math.min(130, maxW), maxW), h = U.rand(Math.min(120, maxH), maxH);
-      const x = U.rand(lx0 + pad, lx1 - pad - w), y = U.rand(ly0 + pad, ly1 - pad - h);
-      if (this.nearCenter(x, y, w, h)) continue;
-      const roof = U.choice(['#6e4a3a', '#4a4f5a', '#7a3b33', '#5a5f44', '#6b6258', '#3e4d5c', '#80664d']);
-      this.obstacles.push({
-        kind: 'building', shape: 'rect', x, y, w, h,
-        height: U.randInt(30, 46), roof,
-        wall: U.choice(['#b9a48a', '#9c9a8f', '#a88a74', '#8f9aa0', '#b5ab93']),
-        ridge: Math.random() < 0.6 ? (w > h ? 'h' : 'v') : null,
-        ac: Math.random() < 0.5,
-      });
+  // edificios de fondo y muro de cuarentena alrededor del mapa
+  makeBorder() {
+    const W = this.w, H = this.h;
+    const add = (x, y, w, h) => this.border.push({ kind: 'building', x, y, w, h, floors: U.randInt(3, 7), height: 0, style: U.randInt(0, 3), burnt: Math.random() < 0.3, shop: false, props: [] });
+    for (let s = -400; s < W + 400; s += U.rand(160, 260)) {
+      const w = U.rand(130, 230);
+      add(s, -U.rand(260, 330), w, 200);
+      add(s, H + U.rand(60, 130), w, 200);
+    }
+    for (let s = 0; s < H; s += U.rand(160, 260)) {
+      const h = U.rand(130, 230);
+      add(-U.rand(260, 330), s, 200, h);
+      add(W + U.rand(60, 130), s, 200, h);
+    }
+    for (const b of this.border) b.height = b.floors * CONFIG.FLOOR_H;
+  }
+
+  addCar(x, y, vertical, burnt, yawJitter, variant = 'car', checkRoad = false) {
+    const dims = { car: [86, 40], taxi: [86, 40], police: [90, 42], van: [98, 46], bus: [210, 54], military: [130, 52] }[variant];
+    const w = vertical ? dims[1] : dims[0], h = vertical ? dims[0] : dims[1];
+    const ox = x - (checkRoad ? w / 2 : 0), oy = y - (checkRoad ? h / 2 : 0);
+    if (this.nearCenter(ox, oy, w, h, 110)) return;
+    if (this.overlapsAny(ox - 16, oy - 16, w + 32, h + 32)) return;
+    const o = {
+      kind: 'car', shape: 'rect', x: ox, y: oy, w, h, vertical, variant, burnt,
+      height: variant === 'bus' ? 58 : variant === 'van' ? 36 : variant === 'military' ? 42 : 26,
+      yaw: U.rand(-yawJitter, yawJitter) + (Math.random() < 0.5 ? Math.PI : 0),
+      color: U.choice(['#7a1f1f', '#1f3a7a', '#bdbdbd', '#2b2b2b', '#4d6b2b', '#a5822a', '#4a2a6b', '#e0e0e0']),
+    };
+    this.obstacles.push(o);
+    if (burnt) {
+      this.scorches.push({ x: ox + w / 2, y: oy + h / 2, r: Math.max(w, h) * 0.75, a: 0.75 });
+      if (Math.random() < 0.18) this.fires.push({ x: ox + w / 2, y: oy + h / 2, z: o.height * 0.8, s: variant === 'bus' ? 1.8 : 1.1 });
     }
   }
 
-  makePark(x0, y0, x1, y1) {
-    this.scatterTrees(x0, y0, x1, y1, U.randInt(4, 8));
-    this.scatterRocks(x0, y0, x1, y1, U.randInt(0, 2));
+  addRubble(x, y, r) {
+    if (this.nearCenter(x - r, y - r, r * 2, r * 2, 120)) return;
+    if (this.overlapsAny(x - r - 10, y - r - 10, r * 2 + 20, r * 2 + 20)) return;
+    this.obstacles.push({ kind: 'rubble', shape: 'circle', x, y, r, height: r * U.rand(0.5, 0.8), seed: Math.random() });
   }
 
-  makeForest(x0, y0, x1, y1, d) {
-    const density = U.clamp((d - CONFIG.TOWN_RADIUS) / 900, 0.3, 1);
-    const area = (x1 - x0) * (y1 - y0);
-    this.scatterTrees(x0, y0, x1, y1, Math.floor((area / 18000) * density));
-    this.scatterRocks(x0, y0, x1, y1, U.randInt(2, 5));
+  addBarrel(x, y, fire) {
+    if (this.overlapsAny(x - 14, y - 14, 28, 28)) return;
+    this.obstacles.push({ kind: 'barrel', shape: 'circle', x, y, r: 10, fire });
+    if (fire) this.fires.push({ x, y, z: 24, s: 0.6 });
   }
 
-  scatterTrees(x0, y0, x1, y1, count) {
-    for (let i = 0, tries = 0; i < count && tries < count * 8; tries++) {
-      const r = U.rand(14, 20);
-      const x = U.rand(x0 + r, x1 - r), y = U.rand(y0 + r, y1 - r);
-      if (this.nearCenter(x - 40, y - 40, 80, 80)) continue;
-      if (this.overlapsAny(x - 52, y - 52, 104, 104)) continue;
-      this.obstacles.push({
-        kind: 'tree', shape: 'circle', x, y, r,
-        canopy: r * U.rand(2.3, 2.9),
-        tint: U.choice(['#2f5a2a', '#36652e', '#2a4f30', '#3d6a2c', '#4a5e26']),
-      });
-      i++;
-    }
-  }
-
-  scatterRocks(x0, y0, x1, y1, count) {
-    for (let i = 0, tries = 0; i < count && tries < count * 8; tries++) {
-      const r = U.rand(14, 30);
-      const x = U.rand(x0 + r, x1 - r), y = U.rand(y0 + r, y1 - r);
-      if (this.nearCenter(x - 40, y - 40, 80, 80)) continue;
-      if (this.overlapsAny(x - r - 30, y - r - 30, r * 2 + 60, r * 2 + 60)) continue;
-      const pts = [];
-      const n = U.randInt(7, 10);
-      for (let k = 0; k < n; k++) pts.push(U.rand(0.75, 1.1));
-      this.obstacles.push({ kind: 'rock', shape: 'circle', x, y, r, pts, shade: U.randInt(0, 2) });
-      i++;
-    }
-  }
-
-  nearCenter(x, y, w, h) {
-    const cx = this.w / 2, cy = this.h / 2, R = 230;
+  nearCenter(x, y, w, h, R = 260) {
+    const cx = this.w / 2, cy = this.h / 2;
     return x < cx + R && x + w > cx - R && y < cy + R && y + h > cy - R;
   }
 
@@ -167,11 +335,6 @@ class World {
       else { ox = o.x - o.r; oy = o.y - o.r; ow = oh = o.r * 2; }
       if (x < ox + ow && x + w > ox && y < oy + oh && y + h > oy) return true;
     }
-    return false;
-  }
-
-  onRoad(x, y) {
-    for (const r of this.roads) if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return true;
     return false;
   }
 

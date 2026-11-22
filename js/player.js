@@ -151,7 +151,7 @@ class Player {
       this.dodgeT -= dt;
       vx = this.dodgeX * s.dodgeSpeed;
       vy = this.dodgeY * s.dodgeSpeed;
-      if (Math.random() < 0.6) game.particles.add(this.x, this.y + 8, U.rand(-20, 20), U.rand(-20, 20), 0.4, 6, 'rgba(160,150,120,0.5)', 3);
+      if (Math.random() < 0.6) game.particles.add(this.x, this.y, U.rand(-20, 20), U.rand(-20, 20), 0.5, 8, 'rgba(150,140,120,0.35)', 3, false, 3, 10, 0, 1.5);
     } else {
       let sp = s.speed * (this.sprinting ? s.sprintMult : 1) * (this.exhausted ? 0.82 : 1);
       if (this.reloadT > 0) sp *= 0.85;
@@ -249,8 +249,8 @@ class Player {
     this.muzzleT = 0.05;
     game.addShake(w.shake);
     game.addLight(mx, my, 160, 0.07);
-    game.particles.add(mx, my, ca * 60, sa * 60, 0.08, 10, '#ffe08a', 0, true);
-    game.particles.add(this.x + ca * 10, this.y + sa * 10, -sa * U.rand(60, 110), ca * U.rand(60, 110), 0.5, 2.5, '#d4a645', 5);
+    game.particles.add(mx, my, ca * 60, sa * 60, 0.07, 14, '#ffd27a', 0, true, 17);
+    game.particles.add(this.x + ca * 10, this.y + sa * 10, -sa * U.rand(60, 110), ca * U.rand(60, 110), 0.8, 2, '#d4a645', 1, false, 18, U.rand(60, 120), -600);
     Sound.play(this.current);
     if (ws.mag === 0 && ws.reserve > 0) this.startReload();
   }

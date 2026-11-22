@@ -14,6 +14,7 @@ class Zombie {
     this.speed = T.speed * mods.speed * U.rand(0.88, 1.12);
     this.dmg = T.dmg * mods.dmg;
     this.shirt = U.choice(SHIRTS);
+    this.pants = U.choice(PANTS);
     this.kbx = 0;
     this.kby = 0;
     this.dirX = 0;
@@ -274,21 +275,24 @@ class Pickup {
 }
 
 // ============================================================ PARTÍCULAS Y TEXTOS
+// Las partículas viven en el plano del mapa (x, y) con una altura z.
 class Particles {
   constructor() {
     this.list = [];
     this.texts = [];
   }
 
-  add(x, y, vx, vy, life, size, color, drag = 4, glow = false) {
+  // drag: rozamiento · glow: brillo aditivo · z/vz/g: altura, velocidad vertical, gravedad · grow: crece con la edad (humo)
+  add(x, y, vx, vy, life, size, color, drag = 4, glow = false, z = 16, vz = 0, g = 0, grow = 0) {
     if (this.list.length >= CONFIG.MAX_PARTICLES) this.list.shift();
-    this.list.push({ x, y, vx, vy, life, max: life, size, color, drag, glow });
+    this.list.push({ x, y, z, vx, vy, vz, g, life, max: life, size, color, drag, glow, grow });
   }
 
-  burst(x, y, n, color, speed, life, size, glow = false) {
+  burst(x, y, n, color, speed, life, size, glow = false, z = 16, up = 0) {
     for (let i = 0; i < n; i++) {
       const a = U.rand(0, TAU), s = U.rand(0.3, 1) * speed;
-      this.add(x, y, Math.cos(a) * s, Math.sin(a) * s, life * U.rand(0.6, 1.2), size * U.rand(0.6, 1.3), color, 4, glow);
+      this.add(x, y, Math.cos(a) * s, Math.sin(a) * s, life * U.rand(0.6, 1.2), size * U.rand(0.6, 1.3), color, 4, glow,
+        z, up ? U.rand(0.3, 1) * up : 0, up ? -up * 2 : 0);
     }
   }
 
@@ -296,13 +300,13 @@ class Particles {
     for (let i = 0; i < n; i++) {
       const a = Math.atan2(dy, dx) + U.rand(-0.9, 0.9);
       const s = (dx || dy ? U.rand(60, 220) : U.rand(20, 120));
-      this.add(x, y, Math.cos(a) * s, Math.sin(a) * s, U.rand(0.25, 0.55), U.rand(2, 4.5),
-        U.choice(['#8a0f0f', '#a01818', '#6e0b0b', '#5a7a2a']), 6);
+      this.add(x, y, Math.cos(a) * s, Math.sin(a) * s, U.rand(0.5, 0.9), U.rand(2, 4),
+        U.choice(['#7a0c0c', '#900f0f', '#5e0808', '#4d5e22']), 1.5, false, U.rand(12, 22), U.rand(20, 140), -520);
     }
   }
 
   text(x, y, str, color = '#fff', size = 16) {
-    this.texts.push({ x, y, str, color, size, life: 1.1, max: 1.1 });
+    this.texts.push({ x, y, h: 40, str, color, size, life: 1.1, max: 1.1 });
   }
 
   update(dt) {
@@ -315,46 +319,21 @@ class Particles {
       const k = Math.max(0, 1 - dt * p.drag);
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      p.vz += p.g * dt;
       p.vx *= k;
       p.vy *= k;
+      if (p.z < 0.6 && p.g < 0) {
+        p.z = 0.6;
+        p.vx = p.vy = p.vz = 0;
+      }
       L[j++] = p;
     }
     L.length = j;
     for (const t of this.texts) {
       t.life -= dt;
-      t.y -= 28 * dt;
+      t.h += 30 * dt;
     }
     this.texts = this.texts.filter(t => t.life > 0);
-  }
-
-  render(ctx, v) {
-    for (const p of this.list) {
-      if (p.x < v.x0 || p.x > v.x1 || p.y < v.y0 || p.y > v.y1) continue;
-      const a = p.life / p.max;
-      ctx.globalAlpha = Math.min(1, a * 1.5);
-      ctx.fillStyle = p.color;
-      if (p.glow) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * (0.5 + a * 0.5), 0, TAU);
-        ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-      } else {
-        const s = p.size * (0.4 + a * 0.6);
-        ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
-      }
-    }
-    ctx.globalAlpha = 1;
-    ctx.textAlign = 'center';
-    for (const t of this.texts) {
-      ctx.globalAlpha = Math.min(1, t.life / t.max * 2);
-      ctx.font = `bold ${t.size}px "Trebuchet MS", sans-serif`;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.strokeText(t.str, t.x, t.y);
-      ctx.fillStyle = t.color;
-      ctx.fillText(t.str, t.x, t.y);
-    }
-    ctx.globalAlpha = 1;
   }
 }

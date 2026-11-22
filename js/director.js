@@ -106,7 +106,7 @@ class Director {
   // punto fuera de la pantalla, transitable y alcanzable
   spawnPoint(minD, maxD, allowVisible = false) {
     const g = this.g, p = g.player, w = g.world;
-    const viewR = Math.hypot(g.cw / 2, g.ch / 2) / g.zoom;
+    const viewR = g.viewRadius;
     minD = minD || viewR + 40;
     maxD = maxD || viewR + 320;
     for (let i = 0; i < 24; i++) {
@@ -123,7 +123,7 @@ class Director {
   spawnHorde(count, focus) {
     const g = this.g, p = g.player, w = g.world;
     const base = U.rand(0, TAU);
-    const viewR = Math.hypot(g.cw / 2, g.ch / 2) / g.zoom;
+    const viewR = g.viewRadius;
     let made = 0;
     for (let i = 0; i < count * 4 && made < count; i++) {
       const a = Math.random() < focus ? base + U.rand(-0.6, 0.6) : U.rand(0, TAU);

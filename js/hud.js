@@ -42,9 +42,77 @@ class HUD {
     ctx.fillText(str, x, y);
   }
 
+  buildMinimap() {
+    const w = this.g.world, S = 180, k = S / w.w;
+    const c = this.minimap = this.minimap || document.createElement('canvas');
+    c.width = c.height = S;
+    const m = c.getContext('2d');
+    m.fillStyle = '#2a2824';
+    m.fillRect(0, 0, S, S);
+    m.fillStyle = '#4e4c48';
+    for (const r of w.roads) m.fillRect(r.x * k, r.y * k, Math.max(2, r.w * k), Math.max(2, r.h * k));
+    for (const o of w.obstacles) {
+      if (o.kind === 'building') { m.fillStyle = o.burnt ? '#5a4a40' : '#8a8478'; m.fillRect(o.x * k, o.y * k, o.w * k, o.h * k); }
+      else if (o.kind === 'wall' || o.kind === 'rubble') { m.fillStyle = '#6a625a'; m.fillRect((o.x - (o.r || 0)) * k, (o.y - (o.r || 0)) * k, Math.max(1, (o.w || o.r * 2) * k), Math.max(1, (o.h || o.r * 2) * k)); }
+    }
+    m.fillStyle = 'rgba(255,120,40,0.9)';
+    for (const f of w.fires) m.fillRect(f.x * k - 1, f.y * k - 1, 2, 2);
+    this.mmScale = k;
+  }
+
+  // textos flotantes y barras de vida de los zombis (proyectados desde el mundo 3D)
+  drawWorldOverlays(ctx) {
+    const g = this.g;
+    for (const z of g.zombies) {
+      if (z.hp >= z.maxHp || z.dead) continue;
+      const s = g.worldToScreen(z.x, z.y, 40 * z.T.model);
+      if (s.x < -40 || s.y < -40 || s.x > g.cw + 40 || s.y > g.ch + 40) continue;
+      const w = Math.max(22, z.radius * 2), f = Math.max(0, z.hp / z.maxHp);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(s.x - w / 2 - 1, s.y - 1, w + 2, 5);
+      ctx.fillStyle = f > 0.5 ? '#b8d04a' : f > 0.25 ? '#e0a03a' : '#d94a3a';
+      ctx.fillRect(s.x - w / 2, s.y, w * f, 3);
+    }
+    for (const t of g.particles.texts) {
+      const s = g.worldToScreen(t.x, t.y, t.h);
+      ctx.globalAlpha = Math.min(1, t.life / t.max * 2);
+      this.text(ctx, t.str, s.x, s.y, t.size, t.color, 'center');
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  drawCrateArrow(ctx) {
+    const g = this.g;
+    for (const pk of g.pickups) {
+      if (pk.type !== 'crate' || g.isOnScreen(pk.x, pk.y, -40)) continue;
+      const s = g.worldToScreen(pk.x, pk.y);
+      const cx = g.cw / 2, cy = g.ch / 2, a = Math.atan2(s.y - cy, s.x - cx);
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const kx = (g.cw / 2 - 60) / Math.abs(ca || 0.001);
+      const ky = (sa < 0 ? g.ch / 2 - 130 : g.ch / 2 - 110) / Math.abs(sa || 0.001);
+      const k = Math.min(kx, ky), ax = cx + ca * k, ay = cy + sa * k;
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(a);
+      ctx.fillStyle = '#ffd34d';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(16, 0); ctx.lineTo(-10, -11); ctx.lineTo(-5, 0); ctx.lineTo(-10, 11);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      const dist = Math.round(U.dist(g.player.x, g.player.y, pk.x, pk.y) / 18);
+      this.text(ctx, `${dist} m`, ax - ca * 28, ay - sa * 28 + 4, 12, '#ffd34d', 'center');
+    }
+  }
+
   render(ctx) {
     const g = this.g, p = g.player, s = p.stats;
     const W = g.cw, H = g.ch;
+    this.drawWorldOverlays(ctx);
+    this.drawCrateArrow(ctx);
 
     // viñeta de daño / vida baja
     const low = p.hp / s.maxHp < 0.3 && p.alive ? (0.35 + Math.sin(g.time * 6) * 0.15) : 0;
@@ -159,18 +227,26 @@ class HUD {
   }
 
   drawMinimap(ctx, x, y) {
-    const g = this.g, r = g.renderer, k = r.mmScale, S = 180;
+    const g = this.g, k = this.mmScale, S = 180;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     U.roundRect(ctx, x - 4, y - 4, S + 8, S + 8, 6);
     ctx.fill();
     ctx.globalAlpha = 0.9;
-    ctx.drawImage(r.minimap, x, y);
+    ctx.drawImage(this.minimap, x, y);
     ctx.globalAlpha = 1;
-    // vista actual
-    const hw = g.cw / 2 / g.zoom, hh = g.ch / 2 / g.zoom;
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + (g.cam.x - hw) * k, y + (g.cam.y - hh) * k, hw * 2 * k, hh * 2 * k);
+    // zona visible por la cámara (trapecio)
+    const cs = g.renderer.corners || [];
+    if (cs.length === 4) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      cs.forEach((c, i) => {
+        const px = x + U.clamp(g.cam.x + c.x, 0, g.world.w) * k, py = y + U.clamp(g.cam.y + c.y, 0, g.world.h) * k;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
     ctx.fillStyle = '#ff4a3a';
     for (const z of g.zombies) {
       const s = z.type === 'brute' ? 3 : 2;

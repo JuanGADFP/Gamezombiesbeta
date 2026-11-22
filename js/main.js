@@ -1,9 +1,9 @@
 'use strict';
 
 (function () {
-  const canvas = document.getElementById('game');
-  Input.init(canvas);
-  const game = new Game(canvas);
+  const hud = document.getElementById('hud');
+  Input.init(hud);
+  const game = new Game(document.getElementById('gl'), hud);
   window.game = game; // útil para depurar desde la consola
 
   window.addEventListener('blur', () => {

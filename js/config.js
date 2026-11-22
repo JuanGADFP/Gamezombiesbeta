@@ -8,15 +8,17 @@ const CONFIG = {
   WORLD_W: 4000,
   WORLD_H: 4000,
   TILE: 40,            // tamaño de celda para pathfinding / colisiones
-  VIEW_W: 1300,        // unidades de mundo visibles (aprox.) -> "cámara alta"
-  VIEW_H: 800,
   DAY_CYCLE: 240,      // segundos que dura un día completo (día + noche)
   START_PHASE: 0.08,   // fase del día al empezar (0 = 07:00)
   BLOCK: 640,          // separación entre calles
-  ROAD_W: 110,
-  TOWN_RADIUS: 1500,   // radio de la zona urbana; fuera hay bosque
-  MAX_PARTICLES: 1500,
-  MAX_DECALS: 600,
+  ROAD_W: 120,
+  SIDEWALK: 24,
+  FLOOR_H: 46,         // altura de cada planta de los edificios
+  // cámara alta en perspectiva (estilo How to Survive)
+  CAMERA: { height: 540, back: 420, fov: 42, aimHeight: 16 },
+  MAX_PARTICLES: 3000,
+  MAX_DECALS: 500,
+  MAX_CORPSES: 80,
 };
 
 const PLAYER_BASE = {
@@ -63,29 +65,30 @@ const WEAPONS = {
 };
 const WEAPON_ORDER = ['machete', 'pistol', 'shotgun', 'rifle'];
 
+const PANTS = ['#2b3442', '#3a3226', '#2a2a2a', '#4a4236', '#33402c', '#1f2a38'];
 const SHIRTS = ['#5b4a3a', '#3f4d5e', '#6b3b3b', '#4c5a3a', '#5a5a5a', '#5e4a63', '#2f4f4f', '#7a6a4f'];
 
 // unlock = segundo de partida en que empiezan a aparecer
 const ZOMBIE_TYPES = {
   walker: {
-    name: 'Caminantes', hp: 34, speed: 58, dmg: 9, radius: 14, xp: 4,
+    model: 1, name: 'Caminantes', hp: 34, speed: 58, dmg: 9, radius: 14, xp: 4,
     attackRate: 0.9, kbResist: 0, skin: '#7f9a6a', unlock: 0, weight: 10,
   },
   runner: {
-    name: 'Corredores', hp: 22, speed: 128, dmg: 7, radius: 13, xp: 6,
+    model: 0.94, name: 'Corredores', hp: 22, speed: 128, dmg: 7, radius: 13, xp: 6,
     attackRate: 0.7, kbResist: 0, skin: '#b3b89a', unlock: 60, weight: 6,
   },
   spitter: {
-    name: 'Escupidores', hp: 40, speed: 52, dmg: 6, radius: 14, xp: 10,
+    model: 1, name: 'Escupidores', hp: 40, speed: 52, dmg: 6, radius: 14, xp: 10,
     attackRate: 1, kbResist: 0, skin: '#a6c23a', unlock: 150, weight: 3,
     range: 380, keepDist: 230, spitRate: 2.6, spitDmg: 12, spitSpeed: 340,
   },
   brute: {
-    name: 'Brutos', hp: 220, speed: 42, dmg: 24, radius: 25, xp: 25,
+    model: 1.65, name: 'Brutos', hp: 220, speed: 42, dmg: 24, radius: 25, xp: 25,
     attackRate: 1.3, kbResist: 0.8, skin: '#6b7d5c', unlock: 210, weight: 2.5,
   },
   bloater: {
-    name: 'Hinchados', hp: 55, speed: 66, dmg: 0, radius: 19, xp: 12,
+    model: 1.15, name: 'Hinchados', hp: 55, speed: 66, dmg: 0, radius: 19, xp: 12,
     attackRate: 1, kbResist: 0.4, skin: '#8d9b4a', unlock: 300, weight: 2.5,
     fuse: 0.65, blastRadius: 120, blastDmg: 38,
   },
