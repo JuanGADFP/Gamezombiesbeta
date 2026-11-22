@@ -217,7 +217,7 @@ class HUD {
     // ---- controles (primeros segundos)
     if (g.time < 14) {
       ctx.globalAlpha = Math.min(1, (14 - g.time) / 2);
-      const lines = ['WASD mover · Ratón apuntar · Clic atacar', 'Shift correr · Espacio rodar · R recargar', '1-4 / rueda cambiar arma · Esc pausa · M silencio'];
+      const lines = ['WASD mover · Ratón apuntar · Clic atacar', 'Shift correr · Espacio rodar · R recargar', '1-4 / rueda cambiar arma · Z zoom · Esc pausa · M silencio'];
       lines.forEach((l, i) => this.text(ctx, l, 24, H - 76 + i * 20, 13, '#ddd', 'left', false));
       ctx.globalAlpha = 1;
     }

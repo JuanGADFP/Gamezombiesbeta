@@ -16,6 +16,7 @@
       <h1>ZONA MUERTA</h1>
       <p class="subtitle">La ciudad cayó hace semanas. Tú sigues aquí.</p>
       <button id="btn-play" class="btn primary">JUGAR</button>
+      <button id="btn-bestiary" class="btn">BESTIARIO</button>
       <p id="menu-best" class="best"></p>
       <div class="controls">
         <div><kbd>WASD</kbd> Moverse</div>
@@ -27,8 +28,28 @@
         <div><kbd>1-4</kbd> / <kbd>Rueda</kbd> Cambiar arma</div>
         <div><kbd>Q</kbd> Arma anterior</div>
         <div><kbd>Esc</kbd> Pausa · <kbd>M</kbd> Silencio</div>
+        <div><kbd>Z</kbd> Acercar / alejar cámara</div>
       </div>
       <p class="tip">La dificultad aumenta con el tiempo. La noche es más peligrosa. Recoge los cristales azules para subir de nivel y busca los suministros aéreos.</p>
+    </div>
+  </div>
+
+  <div id="overlay-bestiary" class="overlay hidden clear">
+    <div class="bestiary">
+      <div class="b-head">
+        <button id="b-prev" class="btn small">◀</button>
+        <div>
+          <div id="b-count" class="b-count"></div>
+          <h2 id="b-name"></h2>
+        </div>
+        <button id="b-next" class="btn small">▶</button>
+      </div>
+      <p id="b-desc" class="b-desc"></p>
+      <div id="b-stats" class="b-stats"></div>
+      <div class="b-actions">
+        <button id="b-reroll" class="btn">Otra variante (Espacio)</button>
+        <button id="b-back" class="btn">Volver (Esc)</button>
+      </div>
     </div>
   </div>
 
@@ -72,6 +93,7 @@
   <script src="js/input.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/textures.js"></script>
+  <script src="js/zombiemodel.js"></script>
   <script src="js/world.js"></script>
   <script src="js/player.js"></script>
   <script src="js/entities.js"></script>

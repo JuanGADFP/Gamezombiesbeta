@@ -122,7 +122,7 @@ class Game {
     const p = this.player;
     Sound.play('kill');
     this.particles.blood(z.x, z.y, 10, 0, 0);
-    this.decals.push({ kind: 'corpse', x: z.x, y: z.y, r: z.radius, angle: z.angle + Math.PI, type: z.type, shirt: z.shirt, pants: z.pants, skin: z.T.skin, life: 25 });
+    this.decals.push({ kind: 'corpse', x: z.x, y: z.y, r: z.radius, angle: z.angle, type: z.type, look: z.look, shirt: z.shirt, pants: z.pants, skin: z.skinCol, fallDir: Math.random() < 0.7 ? -1 : 1, life: 25 });
     this.addDecal('blood', z.x, z.y, z.radius * 0.9);
     const corpses = this.decals.filter(d => d.kind === 'corpse');
     if (corpses.length > CONFIG.MAX_CORPSES) corpses[0].life = Math.min(corpses[0].life, 3);
@@ -269,6 +269,24 @@ class Game {
     return low;
   }
 
+  // bestiario: zombis de cerca
+  openBestiary() {
+    this.bestiaryIdx = this.bestiaryIdx || 0;
+    this.state = 'bestiary';
+    this.bestiaryStep(0);
+  }
+  bestiaryStep(d) {
+    const types = Object.keys(ZOMBIE_TYPES);
+    this.bestiaryIdx = (this.bestiaryIdx + d + types.length) % types.length;
+    const type = types[this.bestiaryIdx], look = ZKit.randomLook(type);
+    look.missingArm = look.missingArm && Math.random() < 0.5;
+    this.bestiary = {
+      type, look, shirt: ZKit.shirtFor(look), pants: U.choice(PANTS),
+      skin: '#' + new THREE.Color(ZOMBIE_TYPES[type].skin).offsetHSL(0, U.rand(-0.08, 0.04), U.rand(-0.05, 0.05)).getHexString(),
+    };
+    this.ui.showBestiary(type);
+  }
+
   togglePause() {
     if (this.state === 'playing') {
       this.state = 'paused';
@@ -285,7 +303,19 @@ class Game {
       const muted = Sound.toggleMute();
       if (this.state === 'playing') this.message(muted ? 'Sonido desactivado' : 'Sonido activado', 1.5);
     }
+    if (this.state === 'bestiary') {
+      if (Input.wasPressed('Escape')) this.ui.closeBestiary();
+      if (Input.wasPressed('ArrowRight') || Input.wasPressed('KeyD')) this.bestiaryStep(1);
+      if (Input.wasPressed('ArrowLeft') || Input.wasPressed('KeyA')) this.bestiaryStep(-1);
+      if (Input.wasPressed('Space')) this.bestiaryStep(0);
+      return;
+    }
     if (Input.wasPressed('Escape') || Input.wasPressed('KeyP')) this.togglePause();
+    if (Input.wasPressed('KeyZ') && this.state === 'playing') {
+      this.zoomIdx = ((this.zoomIdx || 0) + 1) % 3;
+      this.renderer.setZoom([1, 0.7, 0.48][this.zoomIdx]);
+      this.message(['Cámara: normal', 'Cámara: cerca', 'Cámara: muy cerca'][this.zoomIdx], 1.2);
+    }
 
     if (this.state === 'menu') {
       // la cámara recorre el mapa de fondo
@@ -358,7 +388,7 @@ class Game {
     this.renderer.render();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.cw, this.ch);
-    if (this.state !== 'menu') this.hud.render(ctx);
+    if (this.state !== 'menu' && this.state !== 'bestiary') this.hud.render(ctx);
     this.canvas.style.cursor = this.state === 'playing' ? 'none' : 'default';
   }
 }

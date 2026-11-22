@@ -13,8 +13,11 @@ class Zombie {
     this.hp = this.maxHp;
     this.speed = T.speed * mods.speed * U.rand(0.88, 1.12);
     this.dmg = T.dmg * mods.dmg;
-    this.shirt = U.choice(SHIRTS);
+    this.look = ZKit.randomLook(type);
+    this.shirt = ZKit.shirtFor(this.look);
     this.pants = U.choice(PANTS);
+    this.skinCol = '#' + new THREE.Color(T.skin).offsetHSL(U.rand(-0.02, 0.02), U.rand(-0.1, 0.05), U.rand(-0.07, 0.06)).getHexString();
+    this.recoil = 0;
     this.kbx = 0;
     this.kby = 0;
     this.dirX = 0;
@@ -131,6 +134,7 @@ class Zombie {
     this.attackCd -= dt;
     this.hitFlash -= dt;
     this.lunge -= dt;
+    this.recoil -= dt;
     if (p.alive && this.type !== 'bloater' && d < this.radius + p.radius + 7 && this.attackCd <= 0) {
       p.takeDamage(this.dmg, game);
       this.attackCd = T.attackRate;
@@ -142,6 +146,7 @@ class Zombie {
     if (this.dead) return;
     this.hp -= dmg;
     this.hitFlash = 0.08;
+    this.recoil = 0.22;
     const res = this.T.kbResist;
     this.kbx += dirX * kb * (1 - res);
     this.kby += dirY * kb * (1 - res);

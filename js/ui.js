@@ -9,9 +9,15 @@ class UI {
       pause: document.getElementById('overlay-pause'),
       levelup: document.getElementById('overlay-levelup'),
       gameover: document.getElementById('overlay-gameover'),
+      bestiary: document.getElementById('overlay-bestiary'),
     };
     this.cards = [];
     document.getElementById('btn-play').onclick = () => game.startGame();
+    document.getElementById('btn-bestiary').onclick = () => game.openBestiary();
+    document.getElementById('b-prev').onclick = () => game.bestiaryStep(-1);
+    document.getElementById('b-next').onclick = () => game.bestiaryStep(1);
+    document.getElementById('b-reroll').onclick = () => game.bestiaryStep(0);
+    document.getElementById('b-back').onclick = () => this.closeBestiary();
     document.getElementById('btn-resume').onclick = () => game.togglePause();
     document.getElementById('btn-restart').onclick = () => game.startGame();
     document.getElementById('btn-pause-menu').onclick = () => this.toMenu();
@@ -54,6 +60,23 @@ class UI {
   updateBest() {
     const b = this.g.best, el = document.getElementById('menu-best');
     el.textContent = b ? `Récord: ${U.formatTime(b.time)} · Nivel ${b.level} · ${b.kills} bajas` : '';
+  }
+
+  showBestiary(type) {
+    const T = ZOMBIE_TYPES[type], types = Object.keys(ZOMBIE_TYPES);
+    document.getElementById('b-count').textContent = `${types.indexOf(type) + 1} / ${types.length}`;
+    document.getElementById('b-name').textContent = T.name;
+    document.getElementById('b-desc').textContent = T.desc;
+    const bar = (label, v, max) => `<div class="b-stat"><span>${label}</span><i><b style="width:${Math.min(100, v / max * 100)}%"></b></i></div>`;
+    document.getElementById('b-stats').innerHTML =
+      bar('Vida', T.hp, 220) + bar('Velocidad', T.speed, 130) + bar('Daño', T.spitDmg || T.blastDmg || T.dmg, 40) +
+      `<div class="b-stat"><span>Aparece</span><em>${T.unlock ? 'a partir del ' + U.formatTime(T.unlock) : 'desde el inicio'}</em></div>`;
+    this.show('bestiary');
+  }
+
+  closeBestiary() {
+    this.g.state = 'menu';
+    this.show('menu');
   }
 
   showLevelUp(options) {

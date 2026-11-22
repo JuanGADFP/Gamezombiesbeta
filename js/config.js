@@ -71,25 +71,25 @@ const SHIRTS = ['#5b4a3a', '#3f4d5e', '#6b3b3b', '#4c5a3a', '#5a5a5a', '#5e4a63'
 // unlock = segundo de partida en que empiezan a aparecer
 const ZOMBIE_TYPES = {
   walker: {
-    model: 1, name: 'Caminantes', hp: 34, speed: 58, dmg: 9, radius: 14, xp: 4,
-    attackRate: 0.9, kbResist: 0, skin: '#7f9a6a', unlock: 0, weight: 10,
+    desc: 'Antiguos vecinos de la ciudad. Lentos y torpes, pero nunca se cansan. Muchos cojean o arrastran un brazo.', model: 1, name: 'Caminantes', hp: 34, speed: 58, dmg: 9, radius: 14, xp: 4,
+    attackRate: 0.9, kbResist: 0, skin: '#8e9a7c', unlock: 0, weight: 10,
   },
   runner: {
-    model: 0.94, name: 'Corredores', hp: 22, speed: 128, dmg: 7, radius: 13, xp: 6,
-    attackRate: 0.7, kbResist: 0, skin: '#b3b89a', unlock: 60, weight: 6,
+    desc: 'Infectados recientes: el cuerpo aún responde. Corren con los brazos agitándose y te alcanzan si no ruedas a tiempo.', model: 0.94, name: 'Corredores', hp: 22, speed: 128, dmg: 7, radius: 13, xp: 6,
+    attackRate: 0.7, kbResist: 0, skin: '#b8b29c', unlock: 60, weight: 6,
   },
   spitter: {
-    model: 1, name: 'Escupidores', hp: 40, speed: 52, dmg: 6, radius: 14, xp: 10,
-    attackRate: 1, kbResist: 0, skin: '#a6c23a', unlock: 150, weight: 3,
+    desc: 'Su garganta se hincha con un ácido que brilla en la oscuridad. Mantienen la distancia y te escupen.', model: 1, name: 'Escupidores', hp: 40, speed: 52, dmg: 6, radius: 14, xp: 10,
+    attackRate: 1, kbResist: 0, skin: '#9cae4c', unlock: 150, weight: 3,
     range: 380, keepDist: 230, spitRate: 2.6, spitDmg: 12, spitSpeed: 340,
   },
   brute: {
-    model: 1.65, name: 'Brutos', hp: 220, speed: 42, dmg: 24, radius: 25, xp: 25,
-    attackRate: 1.3, kbResist: 0.8, skin: '#6b7d5c', unlock: 210, weight: 2.5,
+    desc: 'Una mole de músculo y rabia. Aguanta muchísimo castigo, apenas retrocede y cada golpe suyo duele.', model: 1.65, name: 'Brutos', hp: 220, speed: 42, dmg: 24, radius: 25, xp: 25,
+    attackRate: 1.3, kbResist: 0.8, skin: '#7d8268', unlock: 210, weight: 2.5,
   },
   bloater: {
-    model: 1.15, name: 'Hinchados', hp: 55, speed: 66, dmg: 0, radius: 19, xp: 12,
-    attackRate: 1, kbResist: 0.4, skin: '#8d9b4a', unlock: 300, weight: 2.5,
+    desc: 'Hinchado por los gases de la putrefacción y cubierto de pústulas. Revienta al acercarse o al morir.', model: 1.15, name: 'Hinchados', hp: 55, speed: 66, dmg: 0, radius: 19, xp: 12,
+    attackRate: 1, kbResist: 0.4, skin: '#a0a462', unlock: 300, weight: 2.5,
     fuse: 0.65, blastRadius: 120, blastDmg: 38,
   },
 };

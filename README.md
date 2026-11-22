@@ -28,6 +28,7 @@ python -m http.server 8000
 | `Espacio` | Rodar, eres invulnerable durante la rodada (gasta estamina) |
 | `R` | Recargar |
 | `1`-`4` / rueda | Cambiar arma · `Q` arma anterior |
+| `Z` | Acercar / alejar la cámara (3 niveles) |
 | `Esc` / `P` | Pausa · `M` silencio |
 
 ## Aspecto visual
@@ -42,6 +43,12 @@ python -m http.server 8000
 - De noche solo ves lo que alumbran tu linterna, los fuegos, los fogonazos y las pocas farolas que aún parpadean.
   Los ojos de los zombis brillan en la oscuridad.
 - Los edificios se vuelven transparentes cuando te tapan.
+- **Zombis detallados**: cuerpo articulado (codos, rodillas, mandíbula que muerde, manos en garra), cara con
+  cuencas, nariz, orejas y dientes, heridas, sangre, venas y moratones. Ropa variada (camiseta, oficinista con
+  corbata, sudadera, policía, bata de hospital, obrero con chaleco reflectante, torso con costillas a la vista)
+  con jirones colgando; a algunos les falta un brazo. Animaciones de cojera, brazos estirados o colgando,
+  retroceso al recibir golpes y caída al morir.
+- **Bestiario** en el menú principal: cada tipo de zombi de cerca, girando, con sus datos y variantes al azar.
 - Todas las texturas y modelos se generan por código, sin archivos de arte externos.
 
 ## Sistemas
@@ -82,6 +89,7 @@ js/utils.js       Utilidades y rejilla espacial
 js/input.js       Teclado y ratón
 js/audio.js       Efectos de sonido sintetizados (WebAudio, sin archivos)
 js/textures.js    Texturas procedurales: asfalto, fachadas, persianas, óxido, sangre...
+js/zombiemodel.js Modelos de zombi esculpidos por código, variantes de ropa y animación (instancias)
 js/world.js       Ciudad procedural (calles, edificios, ruinas, coches...) + pathfinding por campo de flujo
 js/player.js      Jugador: movimiento, estamina, armas, niveles
 js/entities.js    Zombis, proyectiles, objetos y partículas

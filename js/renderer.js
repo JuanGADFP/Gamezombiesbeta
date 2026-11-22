@@ -198,8 +198,6 @@ class Renderer {
       olive: M({ color: 0x4f5a34, roughness: 0.8 }),
       brass: M({ color: 0xc9a040, roughness: 0.3, metalness: 0.9 }),
     };
-    this.cloth = Tex.cloth();
-    this.skin = Tex.skin();
     this.splats = { blood: Tex.splat(110, 8, 6), acid: Tex.splat(110, 150, 30), scorch: Tex.scorch() };
   }
 
@@ -218,8 +216,6 @@ class Renderer {
     const s = this.scene;
     const MAXZ = 340 + CONFIG.MAX_CORPSES;
     this.MAXZ = MAXZ;
-    const clothMat = new THREE.MeshStandardMaterial({ map: this.cloth, roughness: 0.95 });
-    const skinMat = new THREE.MeshStandardMaterial({ map: this.skin, roughness: 0.8 });
     const inst = (geo, mat, n, shadow = true) => {
       const m = new THREE.InstancedMesh(geo, mat, n);
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -232,19 +228,7 @@ class Renderer {
       s.add(m);
       return m;
     };
-    const leg = new THREE.CapsuleGeometry(2.5, 9, 2, 7); leg.translate(0, -7, 0);
-    const torso = new THREE.CapsuleGeometry(5, 4.5, 3, 8); torso.scale(1.15, 1, 0.68); torso.translate(0, 7, 0);
-    const head = new THREE.SphereGeometry(4, 10, 7); head.scale(0.92, 1.12, 1);
-    const arm = new THREE.CapsuleGeometry(1.9, 9.2, 2, 7); arm.translate(0, -6.5, 0);
-    this.Z = {
-      legs: inst(leg, clothMat, MAXZ * 2),
-      torso: inst(torso, clothMat, MAXZ),
-      head: inst(head, skinMat, MAXZ),
-      arms: inst(arm, skinMat, MAXZ * 2),
-      belly: inst(new THREE.SphereGeometry(1, 14, 10), skinMat, 120),
-      sac: inst(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xb8e04a, emissive: 0x6a9a10, emissiveIntensity: 0.8, roughness: 0.4 }), 120),
-      eyes: inst(new THREE.SphereGeometry(0.9, 5, 3), new THREE.MeshBasicMaterial({ color: 0xff2a1a, fog: false }), MAXZ * 2, false),
-    };
+    this.zrig = new ZombieRig(s, MAXZ, true);
 
     // proyectiles
     this.bullets = inst(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), 500, false);
@@ -701,6 +685,7 @@ class Renderer {
   setQuality(low) {
     this.low = low;
     this.r.shadowMap.enabled = !low;
+    if (this.zrig) this.zrig.setShadows(!low);
     this.scene.traverse(o => {
       if (!o.material) return;
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
@@ -716,27 +701,38 @@ class Renderer {
     this.camera.updateProjectionMatrix();
     const scale = this.r.getDrawingBufferSize(new THREE.Vector2()).y / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2));
     for (const p of [this.pNormal, this.pGlow, this.ash]) p.material.uniforms.uScale.value = scale;
-    // radio visible en el suelo (para generar zombis fuera de pantalla)
+    // radio visible en el suelo con el zoom normal (para generar zombis fuera de pantalla)
+    this.viewRadius = this.computeCorners(1).r;
+    this.corners = this.computeCorners(this.zoom || 1).corners;
+  }
+
+  computeCorners(k) {
     const C = CONFIG.CAMERA;
-    this.camera.position.set(0, C.height, C.back);
+    this.camera.position.set(0, C.height * k, C.back * k);
     this.camera.lookAt(0, 0, 0);
     this.camera.updateMatrixWorld();
     const plane0 = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
-    let maxD = 0;
-    this.corners = [];
+    let r = 0;
+    const corners = [];
     for (const [nx, ny] of [[-1, 1], [1, 1], [1, -1], [-1, -1]]) {
       this.raycaster.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
       if (this.raycaster.ray.intersectPlane(plane0, hit)) {
-        maxD = Math.max(maxD, Math.hypot(hit.x, hit.z));
-        this.corners.push({ x: hit.x, y: hit.z });
+        r = Math.max(r, Math.hypot(hit.x, hit.z));
+        corners.push({ x: hit.x, y: hit.z });
       }
     }
-    this.viewRadius = maxD || 1200;
+    if (this.g.cam) this.updateCamera();
+    return { r: r || 1200, corners };
+  }
+
+  setZoom(k) {
+    this.zoom = k;
+    this.corners = this.computeCorners(k).corners;
   }
 
   updateCamera() {
-    const c = this.g.cam, C = CONFIG.CAMERA;
-    this.camera.position.set(c.x + c.sx, C.height, c.y + C.back + c.sy);
+    const c = this.g.cam, C = CONFIG.CAMERA, k = this.zoom || 1;
+    this.camera.position.set(c.x + c.sx, C.height * k, c.y + C.back * k + c.sy);
     this.camera.lookAt(c.x + c.sx, 0, c.y + c.sy);
     this.camera.updateMatrixWorld();
   }
@@ -760,6 +756,7 @@ class Renderer {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.time += dt;
+    if (this.g.state === 'bestiary') { this.r.toneMappingExposure = 1.0; this.renderStudio(dt); return; }
     this.updateCamera();
     this.updateLighting(dt);
     this.updateFade(dt);
@@ -797,7 +794,6 @@ class Renderer {
     this.sun.color.set(n < 0.5 ? 0xffe0b8 : 0x8fa4d8).lerp(_col2.set(0xff9a5a), Math.min(1, dusk) * 0.6);
     this.r.toneMappingExposure = U.lerp(1.2, 1.3, n);
     for (const m of this.facadeMats) m.emissiveIntensity = n * 0.8;
-    this.Z.eyes.material.color.setRGB(1, 0.16, 0.1).multiplyScalar(0.6 + n * 1.6);
   }
 
   // los edificios que tapan al jugador se vuelven transparentes
@@ -892,79 +888,116 @@ class Renderer {
   }
 
   updateZombies() {
-    const g = this.g, Z = this.Z, c = g.cam, R = this.viewRadius + 200;
-    let nb = 0, nzs = 0, n = 0;
-    const setPart = (mesh, i, m, col) => { mesh.setMatrixAt(i, m); mesh.setColorAt(i, col); };
-    const skinCol = new THREE.Color(), shirtCol = new THREE.Color(), pantsCol = new THREE.Color();
-    const draw = (x, y, angle, T, type, shirt, pants, skin, st) => {
-      const s = T.model * (st.swell || 1);
-      skinCol.set(skin); shirtCol.set(type === 'brute' ? '#3a3328' : shirt); pantsCol.set(pants);
-      if (st.flash) { skinCol.multiplyScalar(3); shirtCol.multiplyScalar(3); pantsCol.multiplyScalar(3); }
-      if (st.blink) { skinCol.set(0xff3a1a); shirtCol.set(0xff3a1a); }
-      if (st.dead) {
-        compose(_mA, x, 3 * s - st.sink, y, -Math.PI / 2, yawOf(angle), 0, s, s, s, 'YXZ');
-      } else {
-        compose(_mA, x, st.y0, y, 0, yawOf(angle), 0, s, s, s, 'YXZ');
-      }
-      const ph = st.walk, sw = st.dead ? 0 : Math.sin(ph) * (type === 'runner' ? 0.75 : 0.45);
-      const bob = st.dead ? 0 : Math.abs(Math.cos(ph)) * 1.1;
-      for (const side of [-1, 1]) {
-        _mC.multiplyMatrices(_mA, compose(_mB, side * 3.1, 14, 0, side * sw, 0, st.dead ? side * 0.15 : 0));
-        setPart(Z.legs, n * 2 + (side > 0 ? 1 : 0), _mC, pantsCol);
-      }
-      const lean = st.dead ? 0 : (type === 'runner' ? 0.5 : type === 'brute' ? 0.15 : 0.28) + st.lunge * 0.3;
-      _mD.multiplyMatrices(_mA, compose(_mB, 0, 14 + bob, 0, lean, 0, st.dead ? 0 : Math.sin(ph) * 0.07));
-      setPart(Z.torso, n, _mD, shirtCol);
-      _mC.multiplyMatrices(_mD, compose(_mB, 0, 15.6, 1.4, st.dead ? 0 : -0.25 - lean * 0.5, st.dead ? 0.5 : Math.sin(st.wob) * 0.25, st.dead ? 0 : 0.18 * Math.sin(st.wob * 0.7)));
-      setPart(Z.head, n, _mC, skinCol);
-      if (!st.dead) {
-        for (const side of [-1, 1]) {
-          _mB.multiplyMatrices(_mC, compose(_mE, side * 1.5, 0.9, 3.4, 0, 0, 0));
-          Z.eyes.setMatrixAt(n * 2 + (side > 0 ? 1 : 0), _mB);
-        }
-      } else {
-        _mB.makeScale(0, 0, 0);
-        Z.eyes.setMatrixAt(n * 2, _mB);
-        Z.eyes.setMatrixAt(n * 2 + 1, _mB);
-      }
-      for (const side of [-1, 1]) {
-        const armX = st.dead ? -0.1 : -1.3 - st.lunge * 0.35 + side * Math.sin(ph) * 0.18;
-        _mC.multiplyMatrices(_mD, compose(_mB, side * 6.6, 12.5, 0, armX, 0, st.dead ? side * 1.2 : -side * 0.1));
-        setPart(Z.arms, n * 2 + (side > 0 ? 1 : 0), _mC, skinCol);
-      }
-      if (type === 'bloater' && nb < 120) {
-        _mC.multiplyMatrices(_mD, compose(_mB, 0, 6, 3, 0, 0, 0, 9.5, 9, 9));
-        setPart(Z.belly, nb++, _mC, _col.set(st.blink ? 0xff3a1a : 0x9aa060).multiplyScalar(st.flash ? 3 : 1));
-      }
-      if (type === 'spitter' && nzs < 120) {
-        _mC.multiplyMatrices(_mD, compose(_mB, 0, 9, -4.5, 0, 0, 0, 4.5));
-        setPart(Z.sac, nzs++, _mC, _col.set(0xffffff));
-      }
-      n++;
-    };
+    const g = this.g, c = g.cam, R = this.viewRadius + 200, rig = this.zrig, p = g.player;
+    rig.begin();
+    rig.eyeGlow = 0.45 + (this.n || 0) * 1.6;
     for (const z of g.zombies) {
-      if (n >= this.MAXZ - 1) break;
       if (Math.abs(z.x - c.x) > R || Math.abs(z.y - c.y) > R) continue;
       const fuseK = z.fuse >= 0 ? 1 - z.fuse / z.T.fuse : 0;
-      draw(z.x, z.y, z.angle, z.T, z.type, z.shirt, z.pants, z.T.skin, {
-        walk: z.walk, wob: z.wobble, lunge: z.lunge > 0 ? 1 : 0, flash: z.hitFlash > 0,
+      rig.draw({
+        x: z.x, y: z.y, angle: z.angle, type: z.type, look: z.look, shirt: z.shirt, pants: z.pants, skin: z.skinCol,
+        walk: z.walk, wob: z.wobble, t: this.time, lunge: z.lunge > 0 ? 1 : 0, flash: z.hitFlash > 0,
         blink: z.fuse >= 0 && Math.floor(z.fuse * 16) % 2 === 0, swell: 1 + fuseK * 0.35,
-        y0: z.spawnT > 0 ? -32 * z.T.model * (z.spawnT / 0.4) : 0,
+        y0: z.spawnT > 0 ? -34 * z.T.model * (z.spawnT / 0.4) : 0, recoil: Math.max(0, z.recoil || 0) * 4,
+        near: p.alive && Math.abs(z.x - p.x) + Math.abs(z.y - p.y) < 90, spit: z.type === 'spitter' && z.lunge > 0,
       });
     }
     for (const d of g.decals) {
-      if (d.kind !== 'corpse' || n >= this.MAXZ - 1) continue;
-      if (Math.abs(d.x - c.x) > R || Math.abs(d.y - c.y) > R) continue;
-      draw(d.x, d.y, d.angle, ZOMBIE_TYPES[d.type], d.type, d.shirt, d.pants, d.skin, { dead: true, walk: 0, wob: 0, lunge: 0, sink: d.life < 3 ? (3 - d.life) * 5 : 0 });
+      if (d.kind !== 'corpse' || Math.abs(d.x - c.x) > R || Math.abs(d.y - c.y) > R) continue;
+      rig.draw({
+        x: d.x, y: d.y, angle: d.angle, type: d.type, look: d.look, shirt: d.shirt, pants: d.pants, skin: d.skin,
+        walk: 0, wob: 0, t: this.time, lunge: 0, dead: true, fall: (25 - d.life) / 0.7, fallDir: d.fallDir,
+        sink: d.life < 3 ? (3 - d.life) * 6 : 0,
+      });
     }
-    Z.legs.count = Z.arms.count = Z.eyes.count = n * 2;
-    Z.torso.count = Z.head.count = n;
-    Z.belly.count = nb;
-    Z.sac.count = nzs;
-    for (const k in Z) {
-      Z[k].instanceMatrix.needsUpdate = true;
-      if (Z[k].instanceColor) Z[k].instanceColor.needsUpdate = true;
+    rig.end();
+  }
+
+  // ------------------------------------------------------------------ bestiario (vista de cerca)
+  buildStudio() {
+    const s = this.studio = new THREE.Scene();
+    s.background = new THREE.Color(0x0b0c0a);
+    s.fog = new THREE.Fog(0x0b0c0a, 140, 380);
+    const gt = Tex.toTex(Tex.asphalt());
+    gt.repeat.set(5, 5);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(300, 48), new THREE.MeshStandardMaterial({ map: gt, roughness: 0.9 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    s.add(ground);
+    const bl = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), new THREE.MeshStandardMaterial({ map: this.splats.blood, transparent: true, depthWrite: false, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }));
+    bl.rotation.x = -Math.PI / 2;
+    bl.position.set(8, 0.2, -6);
+    s.add(bl);
+    s.add(new THREE.HemisphereLight(0x8a90a0, 0x201810, 0.7));
+    const key = new THREE.SpotLight(0xffdcb8, 7, 700, 0.45, 0.7, 0);
+    key.position.set(-80, 150, 120);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.target.position.set(0, 15, 0);
+    s.add(key, key.target);
+    const rim = new THREE.DirectionalLight(0x7fa0ff, 2.6);
+    rim.position.set(70, 90, -130);
+    s.add(rim);
+    this.studioFire = new THREE.PointLight(0xff7a2a, 3, 260, 0);
+    this.studioFire.position.set(80, 24, -50);
+    s.add(this.studioFire);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 26, 14), this.mat.rust);
+    barrel.position.set(80, 13, -60);
+    barrel.castShadow = true;
+    s.add(barrel);
+    this.studioFx = new Particles();
+    this.studioRig = new ZombieRig(s, 2, true);
+    this.studioCam = new THREE.PerspectiveCamera(30, 1, 1, 1000);
+    this.studioT = 0;
+    // partículas del bestiario (fuego del bidón)
+    this.studioPts = [false, true].map(add => {
+      const p = new THREE.Points(this.pGlow.geometry.clone(), this.pGlow.material.clone());
+      p.material.blending = add ? THREE.AdditiveBlending : THREE.NormalBlending;
+      p.frustumCulled = false;
+      s.add(p);
+      return p;
+    });
+  }
+
+  renderStudio(dt) {
+    if (!this.studio) this.buildStudio();
+    const b = this.g.bestiary, T = ZOMBIE_TYPES[b.type], sc = T.model;
+    this.studioT += dt;
+    const t = this.studioT;
+    const cam = this.studioCam;
+    cam.aspect = this.g.cw / this.g.ch;
+    cam.updateProjectionMatrix();
+    cam.position.set(0, 20 * sc + 8, 96 * sc + 14);
+    cam.lookAt(0, 9 * sc, 0);
+    const attack = t % 4.5 > 3.6;
+    const rig = this.studioRig;
+    rig.begin();
+    rig.eyeGlow = 1.3;
+    rig.draw({
+      x: 0, y: 0, angle: Math.PI / 2 + t * 0.45, type: b.type, look: b.look, shirt: b.shirt, pants: b.pants, skin: b.skin,
+      walk: t * (b.type === 'runner' ? 10 : 6), wob: t * 1.3, t, lunge: attack ? 1 : 0, near: true, spit: attack && b.type === 'spitter',
+      swell: b.type === 'bloater' ? 1 + Math.max(0, Math.sin(t * 2)) * 0.06 : 1,
+    });
+    rig.end();
+    this.studioFire.intensity = 3 + Math.sin(t * 17) * 0.5 + Math.sin(t * 29) * 0.4;
+    const fx = this.studioFx;
+    if (Math.random() < 0.9) fx.add(80 + U.rand(-6, 6), -60 + U.rand(-6, 6), U.rand(-5, 5), U.rand(-5, 5), U.rand(0.4, 0.7), U.rand(8, 13), U.choice(['#ffd36a', '#ff9a2a', '#ff6a1a']), 1, true, 26, U.rand(35, 60), 0, 0);
+    if (Math.random() < 0.15) fx.add(80, -60, U.rand(5, 15), 0, 3, 18, 'rgba(40,38,36,0.5)', 0.2, false, 46, 40, 0, 2.4);
+    fx.update(dt);
+    for (const [k, pts] of this.studioPts.entries()) {
+      const pos = pts.geometry.attributes.position, col = pts.geometry.attributes.rgba, size = pts.geometry.attributes.size;
+      let n = 0;
+      for (const p of fx.list) {
+        if (p.glow !== (k === 1)) continue;
+        const a = p.life / p.max, c = parseColor(p.color);
+        pos.setXYZ(n, p.x, p.z, p.y);
+        col.setXYZW(n, c.r, c.g, c.b, c.a * Math.min(1, a * 2));
+        size.setX(n++, p.size * (p.grow ? 1 + (1 - a) * p.grow : 0.45 + 0.55 * a));
+      }
+      pts.geometry.setDrawRange(0, n);
+      pos.needsUpdate = col.needsUpdate = size.needsUpdate = true;
     }
+    this.r.render(this.studio, cam);
   }
 
   updateProjectiles() {
