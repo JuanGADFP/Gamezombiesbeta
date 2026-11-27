@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Entre dos bocados</title>
+  <meta name="description" content="Reseñas a dos voces de los lugares donde salimos a comer: mapa, fotos, notas y opiniones.">
+  <meta name="theme-color" content="#7a1f2b">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="lib/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="barra__interior">
+      <a class="marca" href="#" aria-label="Entre dos bocados, inicio">
+        <img class="marca__logo" src="img/logo.svg" alt="" width="40" height="40">
+        <span class="marca__nombre">Entre dos<br>bocados</span>
+      </a>
+      <div class="barra__acciones">
+        <button class="btn btn--fantasma" id="btn-ingresar" type="button" hidden>Ingresar</button>
+        <button class="btn btn--fantasma" id="btn-salir" type="button" hidden>Salir</button>
+        <button class="btn btn--primario" id="btn-nueva" type="button" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Nueva reseña</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="aviso" id="aviso-prueba" hidden>
+    <div class="aviso__interior">
+      <p><strong>Modo prueba.</strong> Lo que agreguen se guarda solo en este navegador. Las reseñas marcadas como <em>Ejemplo</em> son inventadas. Para publicarlas de verdad, conecten Supabase siguiendo el README.</p>
+      <button class="btn btn--chico" id="btn-quitar-ejemplos" type="button" hidden>Quitar ejemplos</button>
+    </div>
+  </div>
+
+  <section class="portada">
+    <div class="portada__interior">
+      <h1>Salimos a comer, opinamos los dos y te lo contamos.</h1>
+      <dl class="cifras" id="cifras">
+        <div><dt>Lugares</dt><dd id="cifra-lugares">0</dd></div>
+        <div><dt>Nota promedio</dt><dd id="cifra-promedio">–</dd></div>
+        <div><dt>Volveríamos</dt><dd id="cifra-volver">–</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="filtros" aria-label="Filtros">
+    <div class="filtros__interior">
+      <div class="filtros__fila">
+        <label class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+          <span class="sr">Buscar</span>
+          <input id="buscar" type="search" placeholder="Buscar lugar, plato o barrio" autocomplete="off">
+        </label>
+        <button class="btn btn--contorno" id="btn-mas-filtros" type="button" aria-expanded="false" aria-controls="mas-filtros">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+          <span>Más filtros</span><span class="contador" id="contador-filtros" hidden></span>
+        </button>
+      </div>
+
+      <div class="grupo-chips">
+        <span class="grupo-chips__titulo">Categoría</span>
+        <div class="chips" id="chips-categorias" role="group" aria-label="Filtrar por categoría"></div>
+      </div>
+      <div class="grupo-chips">
+        <span class="grupo-chips__titulo">Estilo</span>
+        <div class="chips" id="chips-estilos" role="group" aria-label="Filtrar por estilo de comida"></div>
+      </div>
+
+      <div class="mas-filtros" id="mas-filtros" hidden>
+        <label class="campo campo--en-linea">
+          <span>Precio</span>
+          <select id="filtro-precio">
+            <option value="">Cualquiera</option>
+            <option value="1">$ económico</option>
+            <option value="2">$$ moderado</option>
+            <option value="3">$$$ caro</option>
+            <option value="4">$$$$ para ocasiones</option>
+          </select>
+        </label>
+        <label class="campo campo--en-linea">
+          <span>Nota mínima</span>
+          <select id="filtro-nota">
+            <option value="0">Cualquiera</option>
+            <option value="6">6 o más</option>
+            <option value="7">7 o más</option>
+            <option value="8">8 o más</option>
+            <option value="9">9 o más</option>
+          </select>
+        </label>
+        <label class="campo campo--en-linea">
+          <span>Ordenar</span>
+          <select id="filtro-orden">
+            <option value="recientes">Más recientes</option>
+            <option value="nota">Mejor nota</option>
+            <option value="precio">Más económicos</option>
+            <option value="nombre">Nombre (A–Z)</option>
+          </select>
+        </label>
+        <label class="interruptor">
+          <input type="checkbox" id="filtro-volver">
+          <span class="interruptor__pista" aria-hidden="true"></span>
+          <span>Solo los que volveríamos</span>
+        </label>
+        <button class="btn btn--enlace" id="btn-limpiar" type="button">Limpiar filtros</button>
+      </div>
+    </div>
+  </section>
+
+  <main class="principal" id="principal" data-vista="lista">
+    <section class="listado" aria-label="Reseñas">
+      <p class="listado__resumen" id="resumen" aria-live="polite"></p>
+      <div class="tarjetas" id="tarjetas"></div>
+      <div class="vacio" id="vacio" hidden>
+        <img src="img/logo.svg" alt="" width="56" height="56">
+        <h2 id="vacio-titulo">Nada por acá</h2>
+        <p id="vacio-texto">Ningún lugar coincide con esos filtros.</p>
+      </div>
+    </section>
+    <section class="mapa-contenedor" aria-label="Mapa de lugares">
+      <div id="mapa"></div>
+    </section>
+  </main>
+
+  <nav class="conmutador" aria-label="Cambiar vista">
+    <button type="button" data-vista="lista" aria-pressed="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+      Lista
+    </button>
+    <button type="button" data-vista="mapa" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>
+      Mapa
+    </button>
+  </nav>
+
+  <footer class="pie">
+    <div class="pie__interior">
+      <p>Entre dos bocados · Reseñas honestas, pagamos todo lo que comemos.</p>
+    </div>
+  </footer>
+
+  <!-- Detalle de una reseña -->
+  <dialog class="hoja" id="dlg-detalle" aria-labelledby="det-nombre">
+    <div class="hoja__cuerpo" id="detalle"></div>
+  </dialog>
+
+  <!-- Formulario de reseña -->
+  <dialog class="hoja hoja--form" id="dlg-form" aria-labelledby="form-titulo">
+    <form class="formulario" id="form-resena" novalidate>
+      <header class="hoja__cabecera">
+        <h2 id="form-titulo">Nueva reseña</h2>
+        <button class="btn-icono" type="button" data-cerrar aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <div class="formulario__contenido">
+        <fieldset>
+          <legend>El lugar</legend>
+          <label class="campo">
+            <span>Nombre del lugar *</span>
+            <input id="f-nombre" name="nombre" required maxlength="120" autocomplete="off">
+          </label>
+          <div class="campos-dobles">
+            <label class="campo">
+              <span>Categoría *</span>
+              <select id="f-categoria" name="categoria" required></select>
+            </label>
+            <div class="campo">
+              <span id="f-precio-titulo">Precio</span>
+              <div class="segmentado" id="f-precio" role="radiogroup" aria-labelledby="f-precio-titulo"></div>
+            </div>
+          </div>
+          <div class="campo">
+            <span>Estilos de comida</span>
+            <div class="chips chips--envolver" id="f-estilos" role="group" aria-label="Estilos de comida"></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Ubicación *</legend>
+          <div class="buscar-direccion">
+            <label class="campo">
+              <span>Dirección o barrio</span>
+              <input id="f-direccion" name="direccion" maxlength="200" autocomplete="off" placeholder="Ej: Av. Corrientes 1234, CABA">
+            </label>
+            <button class="btn btn--contorno" type="button" id="btn-buscar-dir">Buscar</button>
+          </div>
+          <ul class="sugerencias" id="sugerencias" hidden></ul>
+          <div class="mini-mapa" id="mini-mapa"></div>
+          <div class="mini-mapa__pie">
+            <p class="ayuda" id="ayuda-pin">Toquen el mapa para marcar el lugar. Pueden arrastrar el pin para ajustarlo.</p>
+            <button class="btn btn--chico" type="button" id="btn-mi-ubicacion">Usar mi ubicación</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>La visita</legend>
+          <label class="campo">
+            <span>Fecha de la visita</span>
+            <input id="f-fecha" name="fecha" type="date">
+          </label>
+          <label class="campo">
+            <span>Qué pedimos</span>
+            <textarea id="f-pedimos" name="pedimos" rows="2" maxlength="600"></textarea>
+          </label>
+          <label class="campo">
+            <span>El imperdible</span>
+            <input id="f-imperdible" name="imperdible" maxlength="160" placeholder="El plato que recomendamos sí o sí">
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Nuestras opiniones</legend>
+          <div class="opiniones-form" id="f-opiniones"></div>
+          <label class="interruptor">
+            <input type="checkbox" id="f-volver" checked>
+            <span class="interruptor__pista" aria-hidden="true"></span>
+            <span>Volveríamos</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Fotos</legend>
+          <label class="subir-fotos">
+            <input id="f-fotos" type="file" accept="image/*" multiple>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+            <span>Agregar fotos</span>
+            <small>La primera es la portada. Se achican solas antes de subirse.</small>
+          </label>
+          <div class="fotos-previa" id="f-fotos-previa"></div>
+        </fieldset>
+      </div>
+
+      <footer class="hoja__pie">
+        <p class="error" id="form-error" role="alert" hidden></p>
+        <button class="btn btn--fantasma" type="button" data-cerrar>Cancelar</button>
+        <button class="btn btn--primario" type="submit" id="btn-guardar">Publicar reseña</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Confirmar borrado -->
+  <dialog class="hoja hoja--chica" id="dlg-borrar" aria-labelledby="borrar-titulo">
+    <div class="hoja__cuerpo hoja__cuerpo--relleno">
+      <h2 id="borrar-titulo">¿Borrar esta reseña?</h2>
+      <p id="borrar-texto">Se borran también sus fotos. No se puede deshacer.</p>
+      <div class="acciones-fin">
+        <button class="btn btn--fantasma" type="button" data-cerrar>Cancelar</button>
+        <button class="btn btn--peligro" type="button" id="btn-confirmar-borrar">Borrar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Ingresar -->
+  <dialog class="hoja hoja--chica" id="dlg-ingresar" aria-labelledby="ingresar-titulo">
+    <form class="hoja__cuerpo hoja__cuerpo--relleno" id="form-ingresar">
+      <h2 id="ingresar-titulo">Ingresar para escribir</h2>
+      <p>Solo nosotros dos podemos publicar reseñas.</p>
+      <label class="campo">
+        <span>Email</span>
+        <input id="ing-email" type="email" autocomplete="username" required>
+      </label>
+      <label class="campo">
+        <span>Contraseña</span>
+        <input id="ing-clave" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="error" id="ing-error" role="alert" hidden></p>
+      <div class="acciones-fin">
+        <button class="btn btn--fantasma" type="button" data-cerrar>Cancelar</button>
+        <button class="btn btn--primario" type="submit">Ingresar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="tostada" id="tostada" role="status" aria-live="polite" hidden></div>
+
+  <script src="lib/leaflet/leaflet.js"></script>
+  <script src="lib/supabase/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/ejemplos.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
