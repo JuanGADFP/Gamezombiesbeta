@@ -83,7 +83,10 @@
   }
 
   const mapa = L.map("mapa", { zoomControl: true, scrollWheelZoom: true }).setView(CFG.centroMapa, CFG.zoomInicial);
-  capaBase().addTo(mapa);
+  capaBase()
+    .on("tileerror", () => { $("#mapa-aviso").hidden = false; })
+    .on("tileload", () => { $("#mapa-aviso").hidden = true; })
+    .addTo(mapa);
   const capaPines = L.layerGroup().addTo(mapa);
   const pines = new Map();
 
